@@ -12,6 +12,8 @@ class PlaylistConfig:
     focused: str = ""
     struggling: str = ""
     idle: str = ""
+    editing: str = ""
+    reading: str = ""
 
 
 @dataclass
@@ -20,12 +22,20 @@ class DetectionConfig:
     classifier_interval_seconds: float = 10.0
     debounce_seconds: float = 30.0
     idle_timeout_seconds: float = 180.0
-    # Classifier thresholds
+    # Classifier thresholds — FLOWING
     flowing_min_wpm: float = 40.0
     flowing_max_backspace_rate: float = 0.08
     flowing_max_pause_ratio: float = 0.30
+    # Classifier thresholds — STRUGGLING
     struggling_min_backspace_rate: float = 0.15
     struggling_min_burst_score: float = 0.70
+    # Classifier thresholds — EDITING
+    editing_min_shortcut_rate: float = 0.10
+    editing_min_nav_rate: float = 0.15
+    editing_max_wpm: float = 25.0
+    # Classifier thresholds — READING
+    reading_max_wpm: float = 5.0
+    reading_min_scroll_rate: float = 2.0
 
 
 @dataclass

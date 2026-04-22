@@ -3,16 +3,36 @@ Unit tests for SignalBuffer and the _compute helper.
 Run with: pytest tests/test_signal_buffer.py
 """
 import time
-from src.keyboard.listener import KeyEventType
+from src.keyboard.listener import InputEventType
 from src.keyboard.signal_buffer import SignalBuffer, _compute, _Event
 
 
 def _char(ts: float) -> _Event:
-    return _Event(KeyEventType.CHAR, ts)
+    return _Event(InputEventType.CHAR, ts)
 
 
 def _bs(ts: float) -> _Event:
-    return _Event(KeyEventType.BACKSPACE, ts)
+    return _Event(InputEventType.BACKSPACE, ts)
+
+
+def _shortcut(ts: float) -> _Event:
+    return _Event(InputEventType.SHORTCUT, ts)
+
+
+def _nav(ts: float) -> _Event:
+    return _Event(InputEventType.NAVIGATION, ts)
+
+
+def _scroll(ts: float) -> _Event:
+    return _Event(InputEventType.MOUSE_SCROLL, ts)
+
+
+def _click(ts: float) -> _Event:
+    return _Event(InputEventType.MOUSE_CLICK, ts)
+
+
+def _move_burst(ts: float) -> _Event:
+    return _Event(InputEventType.MOUSE_MOVE_BURST, ts)
 
 
 class TestComputeEmpty:
@@ -22,6 +42,11 @@ class TestComputeEmpty:
         assert m.pause_ratio == 0.0
         assert m.backspace_rate == 0.0
         assert m.burst_score == 0.0
+        assert m.shortcut_rate == 0.0
+        assert m.nav_rate == 0.0
+        assert m.scroll_rate == 0.0
+        assert m.click_rate == 0.0
+        assert m.mouse_activity_rate == 0.0
         assert m.is_empty
 
 
@@ -99,16 +124,68 @@ class TestBurstScore:
 class TestSignalBufferEviction:
     def test_old_events_evicted(self):
         buf = SignalBuffer(window_seconds=1.0)
-        # Add event far in the past (monkeypatch ts directly)
-        buf._events.append(_Event(KeyEventType.CHAR, time.monotonic() - 10.0))
-        buf._events.append(_Event(KeyEventType.CHAR, time.monotonic()))
+        buf._events.append(_Event(InputEventType.CHAR, time.monotonic() - 10.0))
+        buf._events.append(_Event(InputEventType.CHAR, time.monotonic()))
         m = buf.compute_metrics()
-        # Only the recent event should remain; buffer length == 1
         assert len(buf) == 1
 
     def test_add_and_retrieve(self):
         buf = SignalBuffer(window_seconds=60.0)
         now = time.monotonic()
-        buf.add_event(KeyEventType.CHAR, now)
-        buf.add_event(KeyEventType.BACKSPACE, now + 0.1)
+        buf.add_event(InputEventType.CHAR, now)
+        buf.add_event(InputEventType.BACKSPACE, now + 0.1)
         assert len(buf) == 2
+
+
+class TestShortcutAndNavRates:
+    def test_shortcut_rate_pure_shortcuts(self):
+        # 10 shortcuts, 0 other kb events → shortcut_rate = 1.0
+        events = [_shortcut(float(i)) for i in range(10)]
+        m = _compute(events, window_seconds=120)
+        assert m.shortcut_rate == 1.0
+        assert m.nav_rate == 0.0
+
+    def test_nav_rate_pure_nav(self):
+        events = [_nav(float(i)) for i in range(10)]
+        m = _compute(events, window_seconds=120)
+        assert m.nav_rate == 1.0
+        assert m.shortcut_rate == 0.0
+
+    def test_mixed_kb_rates(self):
+        # 5 chars + 5 shortcuts → shortcut_rate = 0.5
+        events = [_char(float(i)) for i in range(5)] + [_shortcut(5.0 + i) for i in range(5)]
+        m = _compute(events, window_seconds=120)
+        assert abs(m.shortcut_rate - 0.5) < 0.01
+
+    def test_shortcuts_do_not_contribute_to_wpm(self):
+        # Lots of shortcuts but no CHAR events → wpm should be 0
+        events = [_shortcut(float(i)) for i in range(50)]
+        m = _compute(events, window_seconds=120)
+        assert m.wpm == 0.0
+
+
+class TestMouseMetrics:
+    def test_scroll_rate_positive(self):
+        # 12 scrolls spread across 60 seconds → ~12 scrolls/min
+        events = [_scroll(float(i) * 5) for i in range(12)]  # t=0,5,10,...,55
+        m = _compute(events, window_seconds=120)
+        assert m.scroll_rate > 0
+
+    def test_no_mouse_events_zero_rates(self):
+        events = [_char(float(i)) for i in range(10)]
+        m = _compute(events, window_seconds=120)
+        assert m.scroll_rate == 0.0
+        assert m.click_rate == 0.0
+        assert m.mouse_activity_rate == 0.0
+
+    def test_mouse_activity_includes_all_types(self):
+        events = [_click(0.0), _scroll(1.0), _move_burst(2.0)]
+        m = _compute(events, window_seconds=120)
+        assert m.mouse_activity_rate > 0
+        assert m.click_rate > 0
+        assert m.scroll_rate > 0
+
+    def test_is_empty_false_with_only_mouse(self):
+        events = [_scroll(0.0), _scroll(1.0), _scroll(2.0)]
+        m = _compute(events, window_seconds=120)
+        assert not m.is_empty

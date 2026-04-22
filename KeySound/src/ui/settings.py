@@ -41,7 +41,7 @@ class SettingsWindow:
         """Create and show the window (blocking within its own event loop)."""
         self._win = ctk.CTk()
         self._win.title("KeySound — Settings")
-        self._win.geometry("620x480")
+        self._win.geometry("620x600")
         self._win.resizable(False, False)
 
         tabview = ctk.CTkTabview(self._win, width=600, height=420)
@@ -78,6 +78,8 @@ class SettingsWindow:
             ("Flowing (energising)", "playlist_flowing", pl.flowing),
             ("Focused (instrumental)", "playlist_focused", pl.focused),
             ("Struggling (calming)", "playlist_struggling", pl.struggling),
+            ("Editing (focused edits)", "playlist_editing", pl.editing),
+            ("Reading (ambient)", "playlist_reading", pl.reading),
             ("Idle (ambient/pause)", "playlist_idle", pl.idle),
         ]:
             self._vars[var_key] = ctk.StringVar(value=default)
@@ -110,6 +112,14 @@ class SettingsWindow:
                    det.flowing_max_pause_ratio, "{:.0%}")
         slider_row("Struggling min backspace %:", "struggling_min_backspace_rate", 0, 0.5,
                    det.struggling_min_backspace_rate, "{:.0%}")
+        slider_row("Editing min shortcut %:", "editing_min_shortcut_rate", 0, 0.5,
+                   det.editing_min_shortcut_rate, "{:.0%}")
+        slider_row("Editing min nav key %:", "editing_min_nav_rate", 0, 0.5,
+                   det.editing_min_nav_rate, "{:.0%}")
+        slider_row("Editing max WPM:", "editing_max_wpm", 1, 60, det.editing_max_wpm)
+        slider_row("Reading max WPM:", "reading_max_wpm", 1, 20, det.reading_max_wpm)
+        slider_row("Reading min scrolls/min:", "reading_min_scroll_rate", 0, 20,
+                   det.reading_min_scroll_rate, "{:.1f}")
         slider_row("Idle timeout (seconds):", "idle_timeout_seconds", 30, 600,
                    det.idle_timeout_seconds)
         slider_row("Mood debounce (seconds):", "debounce_seconds", 5, 120,
@@ -133,12 +143,19 @@ class SettingsWindow:
         cfg.playlists.flowing = v["playlist_flowing"].get().strip()
         cfg.playlists.focused = v["playlist_focused"].get().strip()
         cfg.playlists.struggling = v["playlist_struggling"].get().strip()
+        cfg.playlists.editing = v["playlist_editing"].get().strip()
+        cfg.playlists.reading = v["playlist_reading"].get().strip()
         cfg.playlists.idle = v["playlist_idle"].get().strip()
 
         cfg.detection.flowing_min_wpm = float(v["flowing_min_wpm"].get())
         cfg.detection.flowing_max_backspace_rate = float(v["flowing_max_backspace_rate"].get())
         cfg.detection.flowing_max_pause_ratio = float(v["flowing_max_pause_ratio"].get())
         cfg.detection.struggling_min_backspace_rate = float(v["struggling_min_backspace_rate"].get())
+        cfg.detection.editing_min_shortcut_rate = float(v["editing_min_shortcut_rate"].get())
+        cfg.detection.editing_min_nav_rate = float(v["editing_min_nav_rate"].get())
+        cfg.detection.editing_max_wpm = float(v["editing_max_wpm"].get())
+        cfg.detection.reading_max_wpm = float(v["reading_max_wpm"].get())
+        cfg.detection.reading_min_scroll_rate = float(v["reading_min_scroll_rate"].get())
         cfg.detection.idle_timeout_seconds = float(v["idle_timeout_seconds"].get())
         cfg.detection.debounce_seconds = float(v["debounce_seconds"].get())
 
@@ -157,6 +174,11 @@ class SettingsWindow:
         self._vars["flowing_max_backspace_rate"].set(0.5)
         self._vars["flowing_max_pause_ratio"].set(0.9)
         self._vars["struggling_min_backspace_rate"].set(0.5)
+        self._vars["editing_min_shortcut_rate"].set(0.05)
+        self._vars["editing_min_nav_rate"].set(0.05)
+        self._vars["editing_max_wpm"].set(60.0)
+        self._vars["reading_max_wpm"].set(10.0)
+        self._vars["reading_min_scroll_rate"].set(1.0)
         self._vars["idle_timeout_seconds"].set(10.0)
         self._vars["debounce_seconds"].set(5.0)
 
@@ -166,6 +188,11 @@ class SettingsWindow:
         self._vars["flowing_max_backspace_rate"].set(d.flowing_max_backspace_rate)
         self._vars["flowing_max_pause_ratio"].set(d.flowing_max_pause_ratio)
         self._vars["struggling_min_backspace_rate"].set(d.struggling_min_backspace_rate)
+        self._vars["editing_min_shortcut_rate"].set(d.editing_min_shortcut_rate)
+        self._vars["editing_min_nav_rate"].set(d.editing_min_nav_rate)
+        self._vars["editing_max_wpm"].set(d.editing_max_wpm)
+        self._vars["reading_max_wpm"].set(d.reading_max_wpm)
+        self._vars["reading_min_scroll_rate"].set(d.reading_min_scroll_rate)
         self._vars["idle_timeout_seconds"].set(d.idle_timeout_seconds)
         self._vars["debounce_seconds"].set(d.debounce_seconds)
 

@@ -16,8 +16,9 @@ import time
 
 from src.config import settings as cfg_store
 from src.config.schema import AppConfig
-from src.keyboard.listener import KeyEventListener, KeyEventType
+from src.keyboard.listener import InputEventType, KeyEventListener
 from src.keyboard.signal_buffer import SignalBuffer
+from src.mouse.listener import MouseEventListener
 from src.mood.classifier import Mood, MoodThresholds, classify
 from src.mood.state_manager import MoodStateManager
 from src.audio.playback import PlaybackController
@@ -41,9 +42,10 @@ class KeySoundApp:
         self._state_manager: MoodStateManager | None = None
         self._tray: TrayApp | None = None
         self._classifier_timer: threading.Timer | None = None
-        self._last_keystroke_ts: float = 0.0
+        self._last_activity_ts: float = 0.0
         self._tracking_enabled: bool = True
         self._settings_thread: threading.Thread | None = None
+        self._mouse_listener: MouseEventListener | None = None
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -81,8 +83,12 @@ class KeySoundApp:
             on_play_now=self._play_now,
         )
 
+        # Mouse listener
+        self._mouse_listener = MouseEventListener(callback=self._on_mouse_event)
+
         # Start listening
         self._listener.start()
+        self._mouse_listener.start()
         self._schedule_classifier()
 
     def _setup_player(self, cfg: AppConfig) -> None:
@@ -93,6 +99,8 @@ class KeySoundApp:
                 ("flowing", pl.flowing),
                 ("focused", pl.focused),
                 ("struggling", pl.struggling),
+                ("editing", pl.editing),
+                ("reading", pl.reading),
                 ("idle", pl.idle),
             ]:
                 if url:
@@ -117,7 +125,7 @@ class KeySoundApp:
 
             idle_timeout = self._config.detection.idle_timeout_seconds
             now = time.monotonic()
-            time_since_last_key = now - self._last_keystroke_ts if self._last_keystroke_ts else float("inf")
+            time_since_last_key = now - self._last_activity_ts if self._last_activity_ts else float("inf")
 
             if time_since_last_key >= idle_timeout:
                 mood = Mood.IDLE
@@ -130,15 +138,24 @@ class KeySoundApp:
                     flowing_max_pause_ratio=det.flowing_max_pause_ratio,
                     struggling_min_backspace_rate=det.struggling_min_backspace_rate,
                     struggling_min_burst_score=det.struggling_min_burst_score,
+                    editing_min_shortcut_rate=det.editing_min_shortcut_rate,
+                    editing_min_nav_rate=det.editing_min_nav_rate,
+                    editing_max_wpm=det.editing_max_wpm,
+                    reading_max_wpm=det.reading_max_wpm,
+                    reading_min_scroll_rate=det.reading_min_scroll_rate,
                     idle_timeout_seconds=det.idle_timeout_seconds,
                 )
                 mood = classify(metrics, thresholds)
                 logger.info(
-                    "Metrics → wpm=%.1f  backspace=%.0f%%  pause=%.0f%%  burst=%.2f  → %s",
+                    "Metrics → wpm=%.1f  bs=%.0f%%  pause=%.0f%%  burst=%.2f  "
+                    "shortcut=%.0f%%  nav=%.0f%%  scroll=%.1f/min  → %s",
                     metrics.wpm,
                     metrics.backspace_rate * 100,
                     metrics.pause_ratio * 100,
                     metrics.burst_score,
+                    metrics.shortcut_rate * 100,
+                    metrics.nav_rate * 100,
+                    metrics.scroll_rate,
                     mood.value,
                 )
 
@@ -152,10 +169,16 @@ class KeySoundApp:
     # Event handlers
     # ------------------------------------------------------------------
 
-    def _on_key_event(self, event_type: KeyEventType, ts: float) -> None:
+    def _on_key_event(self, event_type: InputEventType, ts: float) -> None:
         if not self._tracking_enabled:
             return
-        self._last_keystroke_ts = ts
+        self._last_activity_ts = ts
+        self._buffer.add_event(event_type, ts)
+
+    def _on_mouse_event(self, event_type: InputEventType, ts: float) -> None:
+        if not self._tracking_enabled:
+            return
+        self._last_activity_ts = ts
         self._buffer.add_event(event_type, ts)
 
     def _on_mood_change(self, old_mood: Mood, new_mood: Mood) -> None:
@@ -216,7 +239,8 @@ class KeySoundApp:
             pl = new_cfg.playlists
             for mood_name, url in [
                 ("flowing", pl.flowing), ("focused", pl.focused),
-                ("struggling", pl.struggling), ("idle", pl.idle),
+                ("struggling", pl.struggling), ("editing", pl.editing),
+                ("reading", pl.reading), ("idle", pl.idle),
             ]:
                 self._playback.set_playlist(mood_name, url or "")
         logger.info("Settings saved and applied.")
@@ -227,6 +251,8 @@ class KeySoundApp:
             self._classifier_timer.cancel()
         if self._listener:
             self._listener.stop()
+        if self._mouse_listener:
+            self._mouse_listener.stop()
         if self._tray:
             self._tray.stop()
 
